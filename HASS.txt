@@ -1,0 +1,279 @@
+//#include <DHT.h>
+//#include <DHT_U.h>
+#include<Servo.h>
+//#include<MQ2.h>
+#include<LiquidCrystal_I2C.h>
+#include<Wire.h> 
+#include<Keypad.h>
+#include<string.h>
+#include<SimpleDHT.h>
+#include<dht.h>
+
+#define dhtPin A0
+#define dhtType 11
+
+const byte ROWS=4;
+const byte COLS=4; 
+
+/*
+Sensors --------Pin no
+Temp   ---------12
+Buzzer ---------11
+Servo ----------10
+*/
+
+int x=0; 
+int mode = 0; // Buzzer - 1, cal -0
+int ans=0;
+int val1;
+int val2;
+int buzzerPin=11;
+int flag =0;
+int passflag = 0;
+int passlen = 4;
+int ledPin = 13;
+int angle = 0;
+int doorstate = 0;
+int analogInput = A0;
+//int pinDHT11 = 12;
+int gasA0 = A2;
+int sensorThreshold = 300;
+
+char temp = ' ';
+char keys[ROWS][COLS]={
+   {'1','2','3','+'},
+   {'4','5','6','-'},
+   {'7','8','9','*'},
+   {'B','0','=','/'}
+};
+
+byte rowPins[ROWS]={2,3,4,5};
+byte colPins[COLS]={6,7,8,9};
+char password[4]={'5','6','7','8'};
+char userinput[4];
+
+// 2 dm array = makeKeymap(keys)
+Keypad kpd=Keypad(makeKeymap(keys),rowPins,colPins,ROWS,COLS);
+// Set the LCD address to 0x27 for a 16 chars and 2 line display
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+//Servo motor object
+Servo motor;
+dht newdht;
+
+
+/*void redLedOn() {
+  digitalWrite(RED_LED, HIGH);
+}
+
+void redLedOff() {
+  digitalWrite(RED_LED, LOW);
+}
+
+void greenLedOn() {
+  digitalWrite(GREEN_LED, HIGH);
+}
+
+void greenLedOff() {
+  digitalWrite(GREEN_LED, LOW);
+}*/
+
+void alarmTone()
+{
+  for(int i=0; i<30; i++)
+  {
+    tone(buzzerPin,1000);
+    delay(100);
+    noTone(buzzerPin);
+    delay(100);
+  }
+}
+
+bool gasSensor(){
+  int analogSensor = analogRead(gasA0);
+
+  Serial.print("Pin A0: ");
+  Serial.println(analogSensor);
+  if (analogSensor > sensorThreshold)
+  {
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
+void dhtFunction()
+{
+  int chk = newdht.read11(dhtPin);
+
+  float tmp = newdht.temperature;
+  float hmd = newdht.humidity;
+  Serial.print("Temp: ");
+  Serial.print(tmp);
+  Serial.print("°C, ");
+  Serial.print("Humidity: ");
+  Serial.print(hmd);
+  Serial.print("%");
+
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Temp: ");
+  lcd.print((float)tmp);
+  lcd.print("°C");
+  lcd.setCursor(0,1);
+  lcd.print("Humidity: ");
+  lcd.print((float)hmd);
+  lcd.print("%");
+
+  delay(3000);
+}
+
+void setup()
+{
+  motor.attach(10);
+  motor.write(0);
+  
+  // initialize the LCD
+  lcd.begin();
+  Serial.begin(9600);
+  pinMode(buzzerPin,OUTPUT);
+
+//  mq2.begin();
+
+  // Turn on the blacklight and print a message.
+  //lcd.backlight();
+  lcd.print("WELCOME!");
+  delay(2000);
+  lcd.clear();
+
+  //MQ or gas sensor  init
+  pinMode(gasA0, INPUT); 
+
+  lcd.setCursor(0,0);
+  lcd.print("Enter Password:");
+}
+
+void loop()
+{
+  // Do nothing here...
+  char key=kpd.getKey();
+
+  
+   ans=0;
+   if(key && passlen!=0)
+   {
+
+          tone(buzzerPin,1000);
+          delay(50);
+          noTone(buzzerPin);
+          delay(50);
+          Serial.println(key);
+
+          if(passlen==4){
+            userinput[0] = key;
+            lcd.setCursor(0,1);
+            lcd.print(userinput[0]);
+          }
+          if(passlen==3){
+            userinput[1] = key;
+            lcd.setCursor(1,1);
+            lcd.print(userinput[1]);
+          }
+          if(passlen==2){
+            userinput[2] = key;
+            lcd.setCursor(2,1);
+            lcd.print(userinput[2]);
+          }
+          if(passlen==1){
+            userinput[3] = key;
+            lcd.setCursor(3,1);
+            lcd.print(userinput[3]);
+          }          
+
+          passlen--;
+
+          if(passlen == 0){
+            for(int i=0; i<4; i++)
+            {
+              if(password[i] != userinput[i]){
+                passflag = 1;
+                break;
+              }
+            }
+  
+            if(passflag==0 ) //if password is correct
+            {
+              tone(buzzerPin,3000);
+              delay(500);
+              noTone(buzzerPin);
+              delay(50);
+              Serial.println("CORRECT!");
+              lcd.setCursor(0,0);
+              lcd.clear();
+              lcd.print("CORRECT!");
+              
+              digitalWrite(ledPin, HIGH);
+              //delay(5000);
+              digitalWrite(ledPin, LOW);
+
+              //open door
+              if(doorstate == 0)
+              {
+                angle = 90;
+                motor.write(angle);
+                delay(3000);
+                
+                doorstate = 1;
+                dhtFunction();
+                delay(3000);
+                if (gasSensor()) {
+                  lcd.print("GAS DETECTED!");
+                  alarmTone();
+                }
+                else lcd.print("No gas detected.");
+                delay(3000);
+            }
+            else{
+              tone(buzzerPin,1000);
+              delay(50);
+              noTone(buzzerPin);
+              delay(50);
+
+              tone(buzzerPin,1000);
+              delay(50);
+              noTone(buzzerPin);
+              delay(50);
+
+              tone(buzzerPin,1000);
+              delay(50);
+              noTone(buzzerPin);
+              delay(50);
+
+              Serial.println("INCORRECT!");
+              lcd.setCursor(0,0);
+              lcd.clear();
+              lcd.print("INCORRECT!");
+              delay(3000);
+              lcd.clear();
+              lcd.print("Try Again:");
+            }
+            passlen = 4;
+            passflag = 0;
+          }
+        }
+      }
+}
+
+void closeDoor()
+          {
+            //close door
+              if(doorstate == 1)
+              {
+                for(angle=90; angle<=0; angle--)
+                {
+                  motor.write(angle);
+                  delay(100);
+                }
+              }
+          }
